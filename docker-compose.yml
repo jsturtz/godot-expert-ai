@@ -1,0 +1,26 @@
+services:
+  mcp-server:
+    build:
+      context: ./mcp_server
+      dockerfile: ../docker/mcp_server.Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./mcp_server:/app
+  langgraph-dev:
+    build:
+      context: ./agent
+      dockerfile: ../docker/langgraph.Dockerfile
+    ports:
+      - "2024:2024"
+    env_file: .env
+    volumes:
+      - ./agent:/app  # hot-reload agent.py edits without rebuilding
+    environment:
+      # This docker compose assumes we are running an Ollama app on the host machine on port 11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - GODOT_MCP_SERVER=http://mcp-server:8000/sse
+    depends_on:
+      - mcp-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
