@@ -1,0 +1,15 @@
+# python ignores
+__pycache__
+
+# Ingore the cached godot docs repo
+.cache
+
+# vscode stuff
+.vscode
+
+# Environment stuff
+.env
+.venv
+
+# Langgraph API caching
+.langgraph_api
