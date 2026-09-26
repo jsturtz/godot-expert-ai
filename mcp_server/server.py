@@ -52,7 +52,7 @@ async def search_godot_docs(
     query: str,
     language: Optional[Literal["gdscript", "csharp", "cpp"]] = None,
     n_results: int = 5,
-) -> list[str]:
+) -> list[dict]:
     """
     Search Godot engine documentation.
 
@@ -63,22 +63,18 @@ async def search_godot_docs(
             only set this when the user explicitly asks for a specific
             language's syntax).
         n_results: Number of chunks to return.
+    Returns:
+        A list of up to n_results matching chunks, each a dict with:
+            - "text": the chunk's raw content (prose or code).
+            - "url": the published Godot docs page this chunk came from,
+              suitable for citing back to the user.
     """
+
     where = {"language": {"$in": [language, "any"]}} if language else None
     results = godot_docs_collection.query(query_texts=[query], n_results=n_results, where=where)
-    return results["documents"][0]
-
-# --- PROMPTS ---
-@mcp.prompt()
-def godot_code_assistant_prompt(topic: str) -> str:
-    """Returns a pre-configured prompt template for generating GDScript code."""
-    return f"You are an expert Godot 4 developer. Write a clean GDScript snippet demonstrating: {topic}"
-
-# --- RESOURCES ---
-@mcp.resource("resource://godot/version")
-def get_godot_version() -> str:
-    """Returns the current target Godot version."""
-    return "Godot Engine v4.7.stable"
+    docs = results["documents"][0]
+    metadatas = results["metadatas"][0]
+    return [{"text": doc, "url": meta["url"]} for doc, meta in zip(docs, metadatas)]
 
 if __name__ == "__main__":
     host = os.getenv("MCP_HOST", "0.0.0.0")

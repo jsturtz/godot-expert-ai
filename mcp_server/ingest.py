@@ -19,6 +19,7 @@ CACHE_DIR = BASE_DIR / ".cache"
 DOCS_CACHE_DIR = CACHE_DIR / "godot-docs"
 CHROMA_PATH = CACHE_DIR / "chroma_db"
 GODOT_DOCS_URL = "https://github.com/godotengine/godot-docs.git"
+DOCS_BASE_URL = "https://docs.godotengine.org/en/stable"
 
 CODE_BLOCK_RE = re.compile(r"::\n\n((?:[ \t]+.*\n?)+)", re.MULTILINE)
 
@@ -56,6 +57,14 @@ class Chunk:
     chunk_id: str = field(default="")
 
 
+def rst_path_to_docs_url(rst_path: str, docs_root: Path) -> str:
+    """
+    Map a local .rst file path to its published Godot docs URL.
+    """
+    relative = Path(rst_path).relative_to(docs_root).with_suffix(".html")
+    return f"{DOCS_BASE_URL}/{relative.as_posix()}"
+
+
 def sync_godot_docs() -> tuple[bool, str]:
     """
     Ensures the Godot docs repository is present and up to date.
@@ -85,7 +94,9 @@ def sync_godot_docs() -> tuple[bool, str]:
 
 
 def split_into_sections(rst_text: str) -> list[tuple[str, str]]:
-    """Return a list of (heading_path, section_text) tuples."""
+    """
+    Return a list of (heading_path, section_text) tuples.
+    """
     lines = rst_text.splitlines()
     sections: list[tuple[str, str]] = []
     heading_stack: list[str] = []
@@ -123,8 +134,9 @@ def split_into_sections(rst_text: str) -> list[tuple[str, str]]:
     return sections
 
 def chunk_section(heading_path: str, text: str, source_path: str) -> list[Chunk]:
-    """Return a list of Chunks for a given section, splitting out any
-    `.. tabs::` blocks into one Chunk per language."""
+    """
+    Return a list of Chunks for a given section, splitting out any `.. tabs::` blocks into one Chunk per language.
+    """
     chunks: list[Chunk] = []
     tabs_matches = list(TABS_BLOCK_RE.finditer(text))
 
@@ -144,7 +156,9 @@ def chunk_section(heading_path: str, text: str, source_path: str) -> list[Chunk]
 
 
 def _chunk_plain_text(text: str, heading_path: str, source_path: str) -> list[Chunk]:
-    """Original prose/code-block splitting logic (unchanged), now tagging language."""
+    """
+    Original prose/code-block splitting logic (unchanged), now tagging language.
+    """
     chunks: list[Chunk] = []
     code_blocks = list(CODE_BLOCK_RE.finditer(text))
     if not code_blocks:
@@ -173,7 +187,9 @@ def _chunk_plain_text(text: str, heading_path: str, source_path: str) -> list[Ch
 
 
 def _chunk_tabs_block(match: re.Match, heading_path: str, source_path: str) -> list[Chunk]:
-    """Extract one Chunk per language variant from a `.. tabs::` block."""
+    """
+    Extract one Chunk per language variant from a `.. tabs::` block.
+    """
     chunks: list[Chunk] = []
     for tab_match in CODE_TAB_RE.finditer(match.group("body")):
         lang = tab_match.group("lang").lower()  # first token only — "csharp", not "C#"
@@ -184,7 +200,9 @@ def _chunk_tabs_block(match: re.Match, heading_path: str, source_path: str) -> l
 
 
 def _dedent(text: str) -> str:
-    """Strip the common leading whitespace from an indented RST block."""
+    """
+    Strip the common leading whitespace from an indented RST block.
+    """
     lines = text.splitlines()
     indents = [len(l) - len(l.lstrip()) for l in lines if l.strip()]
     if not indents:
@@ -194,7 +212,9 @@ def _dedent(text: str) -> str:
 
 
 def _split_prose(text: str, max_chars: int) -> list[str]:
-    """Split a prose section into smaller pieces if it exceeds max_chars."""
+    """
+    Split a prose section into smaller pieces if it exceeds max_chars.
+    """
     if len(text) <= max_chars:
         return [text] if text.strip() else []
 
@@ -211,8 +231,14 @@ def _split_prose(text: str, max_chars: int) -> list[str]:
     return pieces
 
 
-def add_in_batches(collection, ids: list[str], documents: list[str], metadatas: list[dict], batch_size: int = CHROMA_BATCH_SIZE):
-    """Chroma rejects very large add() requests. Split large payloads into safe batches."""
+def add_in_batches(
+    collection, ids: list[str], 
+    documents: list[str], 
+    metadatas: list[dict], 
+    batch_size: int = CHROMA_BATCH_SIZE):
+    """
+    Chroma rejects very large add() requests. Split large payloads into safe batches.
+    """
     for i in range(0, len(ids), batch_size):
         collection.add(
             ids=ids[i:i + batch_size],
@@ -221,25 +247,30 @@ def add_in_batches(collection, ids: list[str], documents: list[str], metadatas: 
         )
 
 def build_index(docs_dir: Path, collection_name: str = "godot_docs"):
-    """Builds a Chroma index from the Godot docs."""
-    model = SentenceTransformer("BAAI/bge-small-en-v1.5")  # local, free
+    """
+    Builds a Chroma index from the Godot docs.
+    """
     CHROMA_PATH.mkdir(parents=True, exist_ok=True)
     client = PersistentClient(path=str(CHROMA_PATH))
 
     embedding_function = SentenceTransformerEmbeddingFunction(
         model_name="BAAI/bge-small-en-v1.5",
-        normalize_embeddings=True,  # pairs with cosine space below
+        normalize_embeddings=True,
     )
     collection = client.get_or_create_collection(
         collection_name,
         embedding_function=embedding_function,
-        metadata={"hnsw:space": "cosine"},  # cosine distance is more appropriate for normalized embeddings
+        metadata={"hnsw:space": "cosine"},
     )
     all_chunks: list[Chunk] = []
     for rst_file in docs_dir.rglob("*.rst"):
         text = rst_file.read_text(encoding="utf-8", errors="ignore")
         for heading_path, section_text in split_into_sections(text):
             all_chunks.extend(chunk_section(heading_path, section_text, str(rst_file)))
+
+    # Compute each chunk's published docs URL now that we have docs_dir in scope
+    for chunk in all_chunks:
+        chunk.url = rst_path_to_docs_url(chunk.source_path, docs_dir)
 
     print(f"Built {len(all_chunks)} chunks from {docs_dir}")
 
@@ -250,8 +281,9 @@ def build_index(docs_dir: Path, collection_name: str = "godot_docs"):
             "source": c.source_path,
             "heading_path": c.heading_path,
             "chunk_type": c.chunk_type,
-            "godot_version": c.godot_version,''
-            'language': c.language,
+            "godot_version": c.godot_version,
+            "language": c.language,
+            "url": c.url,
         }
         for c in all_chunks
     ]
@@ -260,7 +292,9 @@ def build_index(docs_dir: Path, collection_name: str = "godot_docs"):
     print(f"Indexed {len(all_chunks)} chunks into '{collection_name}'")
 
 def run_ingestion_pipeline():
-    """Run the full ingestion pipeline: sync docs, build index if needed."""
+    """
+    Run the full ingestion pipeline: sync docs, build index if needed.
+    """
     has_changes, commit_hash = sync_godot_docs()
 
     client = PersistentClient(path=str(CHROMA_PATH))
