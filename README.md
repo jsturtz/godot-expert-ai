@@ -62,7 +62,7 @@ On first run, the MCP server clones the official Godot docs, chunks and embeds t
 
 ## Demo
 
-https://github.com/user-attachments/assets/611c0ed1-2696-4735-aeb6-54b6f37e6f21
+https://github.com/user-attachments/assets/819880d5-4274-4b20-83f2-d545ae4c88a2
 
 ## Roadmap
 
