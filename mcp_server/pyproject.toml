@@ -1,0 +1,21 @@
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "chromadb>=1.5.9",
+    "gitpython>=3.1.62",
+    "mcp[cli]>=2.2.0",
+    "onnxruntime>=1.30.0",
+    "sentence-transformers>=6.1.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
